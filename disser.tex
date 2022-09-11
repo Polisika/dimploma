@@ -1,0 +1,151 @@
+\documentclass{disser}
+\hypersetup{
+    pdfauthor={Карасюк Артём Денисович}, % Автор
+    pdftitle={Выпускная квалификационная работа},    % Заголовок
+    pdfsubject={Исследование алгоритмов генерации музыки с использованием искусственных нейронных сетей}
+}
+
+%%% Номер страницы сверху %%%
+\usepackage{scrlayer-scrpage}
+
+% для листинга программы
+\usepackage{listings}
+
+% для оформления картинок
+\usepackage{graphicx}
+\pagestyle{scrheadings}
+\clearscrheadfoot
+\cfoot[\pagemark]{\pagemark}
+
+\onehalfspacing
+
+\usepackage{caption}
+\usepackage{pythonhighlight}
+%\setcounter{tocdepth}{1}
+
+%\addbibresource{mypapers.bib}
+\begin{document}
+%\ fontsize {5.0pt} {\ baselineskip} \ selectfont text
+%\input{disser_tex/title}                  % Титульный лист
+
+\includepdf{tex/titul/tituldiplom.pdf}
+\includepdf[pages=-]{tex/titul/list_zadania.pdf}
+\setcounter{page}{3}
+
+
+\input{tex/annotation}
+\thispagestyle{empty}
+
+\tableofcontents                          % Оглавление
+\addtocontents{toc}{\protect\thispagestyle{empty}}
+\thispagestyle{empty}
+
+\addchap{ВВЕДЕНИЕ}
+	\input{tex/introduction}           % Введение
+
+\chapter{~ОПИСАНИЕ МОДЕЛИ MUSEGAN}\label{chapter1}
+%	\input{disser_tex/stateofart} % Вставить куда-нить!
+	\input{tex/chapter1}
+	
+\chapter{~ОПИСАНИЕ МОДЕЛИ THEME TRANSFORMER}\label{chapter2}
+	\input{tex/chapter2}
+
+\chapter{~ОПИСАНИЕ РАЗРАБОТАННЫХ ПРОГРАММ}\label{chapter31}
+    \input{tex/chapter3.1}
+
+\chapter{~ПРИМЕНЕНИЕ ИДЕИ DALL-E В ГЕНЕРАЦИИ МУЗЫКИ}\label{chapter3}
+    \input{tex/chapter3}
+
+\chapter{~ИССЛЕДОВАНИЕ MUSEGAN, THEME TRANSFORMER И ИХ КОМБИНАЦИИ}\label{chapter4}
+    \input{tex/chapter4}
+ 
+	
+\addchap{ЗАКЛЮЧЕНИЕ}
+	\input{tex/conclusion}
+\begin{thebibliography}{99}
+    \bibitem{brainfm}
+      Brain.fm's focus music is made to help you work better [Электронный ресурс]. URL: https://www.brain.fm/ru (дата обращения: 10.06.2022)
+    
+    %\bibitem{mubert}
+      %Human х AI Generative Music [Электронный ресурс] URL: https://mubert.com/ (дата обращения: 10.06.2022)
+    
+    \bibitem{musegan}
+      Hao-Wen Dong, Wen-Yi Hsiao, Li-Chia Yang, Yi-Hsuan Yang.  % авторы
+      MuseGAN: Multi-Track Sequential Generative Adversarial Networks for Symbolic Music Generation and Accompaniment % название
+      [Электронный ресурс]. 
+      URL: https://arxiv.org/pdf/1709.06298.pdf (дата обращения: 12.02.2022)
+    
+    \bibitem{tonal-distance}
+      Christopher A. Harte, Martin Gasser, Mark Brian Sandler.
+      Detecting harmonic change in musical audio
+      [Электронный ресурс].
+      URL:
+      https://www.researchgate.net/publication/200806168\_Detecting\_harmonic
+      \_change\_in\_musical\_audio
+      (дата обращения: 03.05.2022)
+    
+    \bibitem{theme}
+      Yi-Jen Shih, Shih-Lun Wu, Frank Zalkow, Meinard Muller, Yi-Hsuan Yang.
+      Theme Transformer: Symbolic Music Generation with Theme-Conditioned Transformer
+      [Электронный ресурс].
+      URL: https://arxiv.org/pdf/2111.04093.pdf
+      (дата обращения: 22.03.2022)
+    
+    \bibitem{attention}
+      Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Łukasz Kaiser, Illia Polosukhin. 
+      Attention Is All You Need 
+      [Электронный ресурс].
+      URL: https://arxiv.org/pdf/1706.03762.pdf (дата обращения 09.04.2022)
+    
+    \bibitem{muse-torch}
+      Исходный код реализации модели MuseGAN с использованием фреймворка PyTorch [Электронный ресурс] URL: https://github.com/salu133445/ismir2019tutorial (дата обращения 10.05.2022)
+    
+    \bibitem{theme_source}
+      Исходный код реализации ThemeTransformer [Электронный ресурс] URL: https://github.com/atosystem/ThemeTransformer (дата обращения 15.03.2022)
+    
+    \bibitem{torch_lightning}
+      The ultimate PyTorch research framework [Электронный ресурс] https://pypi.org/project/pytorch-lightning/ (дата обращения 18.03.2022)
+    
+    \bibitem{voronkovskiy}
+      Вороновский Г. К., Махотило К. В., Петрашев С. Н., Сергеев С. А.  Генетические алгоритмы, искусственные нейронные сети и проблемы виртуальной реальности. — Харьков: Основа, 1997. — 112 с. — ISBN 5-7768-0293-8
+      
+    \bibitem{python2}
+      Гослинг, Дж. The Python Language / Дж. Гослинг, Б. Джой, Г. Стил [и др.] – М.: «Вильямс», 2015. – 672 с.
+      
+    \bibitem{transgan}
+      A. Muhamed, L. Li, X. Shi, S. Yaddanapudi, W. Chi, D. Jackson, R. Suresh, Z. C. Lipton, and A. J. Smola, "Symbolic music generation with Transformer-GANs," in Proc. AAAI Conf. Artificial Intelligence, 2021
+      
+    \bibitem{million_song_dataset}
+      Bertin-Mahieux, T.; Ellis, D. P.; Whitman, B.; and Lamere, P. 2011. The Million Song Dataset. In ISMIR.
+    
+    \bibitem{python}
+      Bloch, J.J. Python: Programming Language Guide. – М.: Лори, 2002. – 224 с.
+      
+    \bibitem{composition}
+       C. Hernandez-Olivan and J. R. Beltran, "Music composition with deep learning: A review," 2021, arXiv preprint arXiv:2108.12290
+       
+    \bibitem{morpheus}
+      Herremans, D., and Chew, E. "MorpheuS: generating structured music with constrained patterns and tension". IEEE Trans. Affective Computing, 2017.
+      
+    \bibitem{survey}
+      Jean-Pierre Briot, Gaëtan Hadjeres, François-David Pachet,
+      "Deep Learning Techniques for Music Generation -- A Survey," [Электронный ресурс]. URL: https://arxiv.org/pdf/1709.01620.pdf (дата обращения: 04.05.2022)
+     
+    \bibitem{creativity}
+      Sturm, B. L.; Santos, J. F.; Ben-Tal, O.; and Korshunova, I., "Music transcription modelling and composition using deep learning". In Conference on Computer Simulation of Musical Creativity, 2016
+    
+    \bibitem{pop909}
+      Z. Wang, K. Chen, J. Jiang, Y. Zhang, M. Xu, S. Dai, X. Gu, and G. Xia, "POP909: A pop-song dataset for music arrangement generation," in
+      Proc. Int. Soc. Music Information Retrieval Conf., 2020.
+\end{thebibliography}
+%\printbibliography[heading=bibintoc] % печать библиографии
+
+\appendix
+\renewcommand{\thechapter}{\Asbuk{chapter}}
+%\renewcommand{\thechapter}{\Asbuk{chapter}}
+%\input{tex/appendix1}
+\chapter*{Приложение А. ТЕКСТ ПРОГРАММ}
+\addcontentsline{toc}{chapter}{Приложение А. ТЕКСТ ПРОГРАММ}
+\label{application:a}
+    \input{tex/appendix.code.tex}
+\end{document}

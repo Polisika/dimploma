@@ -1,0 +1,794 @@
+\appendix
+
+Приведён только программный код на языке Python, с полным списком всех файлов можно ознакомиться здесь https://github.com/Polisika/generate\_music\_analysis. 
+
+\lstset{
+  basicstyle=\footnotesize,        % the size of the fonts that are used for the code
+}
+
+Файл \textbf{define\_model.py}
+
+\begin{lstlisting}[language=Python]
+"""
+Defines MuseGAN generator module.
+"""
+
+
+import torch
+
+latent_dim = 128
+n_pitches = 72  # number of pitches
+n_measures = 4  # number of measures per sample
+beat_resolution = 4  # temporal resolution of a beat (in timestep)
+measure_resolution = 4 * beat_resolution
+n_samples = 4
+lowest_pitch = 24  # MIDI note number of the lowest pitch
+beat_resolution = 4  # temporal resolution of a beat (in timestep)
+programs = [0, 0, 25, 33, 48]  # program number for each track
+is_drums = [True, False, False, False, False]  # drum indicator for tracks
+track_names = ["Drums", "Piano", "Guitar", "Bass", "Strings"]  # name of each track
+tempo = 100
+n_tracks = 5  # number of tracks
+
+
+class GeneraterBlock(torch.nn.Module):
+    def __init__(self, in_dim, out_dim, kernel, stride):
+        super().__init__()
+        self.transconv = torch.nn.ConvTranspose3d(in_dim, out_dim, 
+                                                  kernel, stride)
+        self.batchnorm = torch.nn.BatchNorm3d(out_dim)
+
+    def forward(self, x):
+        x = self.transconv(x)
+        x = self.batchnorm(x)
+        return torch.nn.functional.relu(x)
+
+
+class Generator(torch.nn.Module):
+    """A convolutional neural network (CNN) based
+    generator. The generator takes as input a latent
+    vector and outputs a fake sample."""
+
+    def __init__(self):
+        super().__init__()
+        self.transconv0 = GeneraterBlock(latent_dim, 256,
+                                         (4, 1, 1), (4, 1, 1))
+        self.transconv1 = GeneraterBlock(256, 128, (1, 4, 1), (1, 4, 1))
+        self.transconv2 = GeneraterBlock(128, 64, (1, 1, 4), (1, 1, 4))
+        self.transconv3 = GeneraterBlock(64, 32, (1, 1, 3), (1, 1, 1))
+        self.transconv4 = torch.nn.ModuleList(
+            [GeneraterBlock(32, 16, (1, 4, 1), (1, 4, 1))
+             for _ in range(n_tracks)]
+        )
+        self.transconv5 = torch.nn.ModuleList(
+            [GeneraterBlock(16, 1, (1, 1, 12), (1, 1, 12))
+             for _ in range(n_tracks)]
+        )
+
+    def forward(self, x):
+        x = x.view(-1, latent_dim, 1, 1, 1)
+        x = self.transconv0(x)
+        x = self.transconv1(x)
+        x = self.transconv2(x)
+        x = self.transconv3(x)
+        x = [transconv(x) for transconv in self.transconv4]
+        x = torch.cat([transconv(x_)
+                       for x_, transconv
+                       in zip(x, self.transconv5)], 1)
+        x = x.view(-1, n_tracks,
+                   n_measures * measure_resolution, n_pitches)
+        return x
+
+\end{lstlisting}
+
+Файл \textbf{research\_muse\_transformer.py}
+
+\begin{lstlisting}[language=Python]
+import os
+from pathlib import Path
+import subprocess
+
+models = [
+    "model_25min.ckpt",
+    "model_35min.ckpt",
+    "model_1hour.ckpt",
+    "model_1.5hour.ckpt",
+    "model_15000_epochs.ckpt",
+    "model_2days.ckpt",
+]
+# 214 epochs 25 min
+# 300 epochs 35 min
+# 514 epochs 1 hour
+# 771 epochs 1.5 hour
+# 15000 epochs == 29 hour
+# 20290 epochs == 48 hours
+tracks = [
+    "theme_files_musegan/model_1200k_2_normalised_theme.mid",
+    "theme_files_musegan/model_200k_2_normalised_theme.mid",
+    "theme_files_musegan/model_1200k_3_normalised_theme.mid",
+    "theme_files_musegan/model_100k_3_normalised_theme.mid",
+    "theme_files_musegan/model_40k_3_normalised_theme.mid",
+    "theme_files_musegan/model_5k_3_normalised_theme.mid",
+    "theme_files_musegan/model_200k_3_normalised_theme.mid",
+    "theme_files_musegan/model_40k_1_normalised_theme.mid",
+    "theme_files_musegan/model_1200k_1_normalised_theme.mid",
+    "theme_files_musegan/model_40k_2_normalised_theme.mid",
+    "theme_files_musegan/model_5k_1_normalised_theme.mid",
+    "theme_files_musegan/model_100k_2_normalised_theme.mid",
+    "theme_files_musegan/model_5k_2_normalised_theme.mid",
+    "theme_files_musegan/model_200k_1_normalised_theme.mid",
+    "theme_files_musegan/model_100k_1_normalised_theme.mid",
+]
+
+print("Start research")
+for model in models:
+    dir_name = model.split(".")[0]
+    Path(dir_name).mkdir(exist_ok=True)
+    print("directory created")
+    for track in tracks:
+        model_name = model.split(".")[0]
+        track_name = track.split("/")[-1].split(".")[0]
+        print(f"{model} make track for {track}")
+        if not Path(f"{dir_name}/{model_name}_{track_name}.mid").exists():
+            subprocess.run(
+                [
+                    "venv/bin/python3",
+                    "inference.py",
+                    "--theme",
+                    track,
+                    "--model_path",
+                    model,
+                    "--seed",
+                    "20220529",
+                    "--cuda",
+                    "--out_midi",
+                    f"{dir_name}/{model_name}_{track_name}.mid",
+                ]
+            )
+
+\end{lstlisting}
+
+Файл \textbf{main.py}
+
+\begin{lstlisting}[language=Python]
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pypianoroll
+from mido import MidiFile
+
+from classify import classify
+from consts import MID_FILES_SUFFIX, WAV_FILES_SUFFIX
+from features import get_features
+from utils import (
+    extract_audio,
+    tracks_replace_velocity,
+    generate_sample,
+    get_temp_name
+)
+
+
+def main(f=None):
+    """
+    Main pipeline for classify of the MuseGAN model.
+    Clears all temp files.
+    :param f: file descriptor for writing results in csv file.
+    :return: nothing
+    """
+    need_delete = (
+        generate_sample(),
+        get_temp_name(MID_FILES_SUFFIX),
+        get_temp_name(WAV_FILES_SUFFIX),
+    )
+    try:
+        midi_filename, normalized_filename, audio_filename = need_delete
+        need_delete = need_delete[1:]
+        replace_velocity_file(midi_filename, normalized_filename)
+        extract_audio(normalized_filename, audio_filename)
+        features = get_features(audio_filename)
+        genre, probabilities = classify(features)
+        if f:
+            f.write(";".join([str(k)
+                              for k in probabilities[0]])
+                    + f";{genre[0]}\n")
+    finally:
+        for i in need_delete:
+            Path(i).unlink(missing_ok=True)
+
+
+def replace_velocity_file(midi_filename, normalized_filename):
+    """
+    Replace velocity for all notes in midi file.
+    :param midi_filename: path to midi file.
+    :param normalized_filename: path to output midi file.
+    :return: nothing
+    """
+    midi_file = MidiFile(midi_filename)
+    tracks_replace_velocity(midi_file)
+    midi_file.save(normalized_filename)
+
+
+def run_musegan_experiments():
+    """
+    Run experiments for MuseGAN models.
+    Uses model_5k.pt model_40k.pt model_100k.pt
+    model_200k.pt model_1200k.pt parameters.
+    Clears all temp files.
+    :return: nothing
+    """
+    basic_path = "musegan/models"
+    for model_path in [
+        "model_5k.pt",
+        "model_40k.pt",
+        "model_100k.pt",
+        "model_200k.pt",
+        "model_1200k.pt",
+    ]:
+        for i in range(1, 4):
+            d = basic_path + "/" + \
+                model_path.split("_", maxsplit=1)[-1].split(".")[0]
+            Path(d).mkdir(exist_ok=True)
+            source_filename = generate_sample(basic_path + "/" + model_path)
+            filename = f"{d}/{i}_normalised.mid"
+            replace_velocity_file(source_filename, filename)
+            extract_audio(filename, f"{d}/{i}.wav", shrink_seconds=None)
+
+            Path(source_filename).unlink(missing_ok=True)
+
+
+def themetransformer_convert():
+    """
+    Extracts MP3 files for midi files in themetransformer directory.
+    :return: nothing
+    """
+    directory = Path("themetransformer")
+    for file in directory.glob("*.mid"):
+        extract_audio(file, f"{file}.wav", shrink_seconds=None)
+
+
+def directory_classify(dir_path):
+    """
+    Classify every *.wav file in the dir_path directory.
+    :param dir_path: filepath to directory.
+    :return: list of the dicts with genre classify results.
+    """
+    directory = Path(dir_path)
+    result = []
+    for file in directory.rglob("*.wav"):
+        features = get_features(file)
+        genre, probabilities = classify(features)
+        result.append(
+            {
+                "filename": str(file).split("/")[-1],
+                "genre": genre,
+                **dict(zip(
+                    range(0, len(probabilities[0])),
+                    probabilities[0])
+                ),
+            }
+        )
+
+    return result
+
+
+def themetransformer_classify():
+    """
+    Classify and represents results of the Theme Transformer classify.
+    :return: nothing
+    """
+    dir_ = ["2days_tt", "15000k_epochs", "1_5hour_tt"]
+    r = []
+    for d in dir_:
+        another_dir = "wav_results"
+        for i in Path(d).rglob("*.mid"):
+            extract_audio(str(i),
+                          another_dir + f"/{str(i).split('/')[-1]}.wav")
+        res = directory_classify(another_dir)
+        r += res
+
+    df = pd.DataFrame(r)
+    df.to_csv("musetransformer_classify.csv")
+
+    with open("result.md", "w") as f:
+        df.drop(["filename"], axis=1).describe().to_html(f)
+
+
+def musegan_get_midis(models, dir_path):
+    """
+    Generates for every model in models 100 random samples.
+    :param models: list of filepath.
+    :param dir_path: path to the existing directory for storing result.
+    :return: nothing
+    """
+    for model in models:
+        for _ in range(100):
+            filename = generate_sample(model, is_random=True)
+            n_f = f"{dir_path}/n_{filename}"
+            replace_velocity_file(filename, n_f)
+            Path(filename).unlink()
+
+
+def transform_musegan_to_themetransformer(midi_filepath: str,
+                                          out_midi_filepath: str):
+    """
+    Get input for Theme Transformer from MuseGAN output.
+    :param midi_filepath: result of the MuseGAN model (generate sample).
+    Strongly recommends use normalize velocity before.
+    :param out_midi_filepath: filepath of the output.
+    :return: nothing
+    """
+    midi = pypianoroll.read(midi_filepath)
+    tracks = [i for i in midi.tracks if i.name in ["Guitar", "Piano"]]
+    replace_names = {"Guitar": "MELODY", "Piano": "PIANO"}
+    shape_tracks = (192, 128)
+    for i in tracks:
+        i.name = replace_names[i.name]
+        i.pianoroll.resize(shape_tracks)
+    theme_track = np.zeros(shape_tracks[::-1])
+    theme_track[1] = np.ones((128, 1))
+    theme_track = theme_track.transpose()
+    theme_track = pypianoroll.Track(
+        name="Theme info track", program=0,
+        is_drum=False, pianoroll=theme_track
+    )
+    tracks.append(theme_track)
+    midi.tracks = tracks
+    pypianoroll.save(out_midi_filepath, midi)
+
+
+if __name__ == "__main__":
+    musegan_get_midis(["musegan/models/model_40k.pt"], "musegan_midis")
+
+\end{lstlisting}
+
+Файл \textbf{utils.py}
+
+\begin{lstlisting}[language=Python]
+"""
+Module sets seed for torch library (for reproducibility).
+Has functions for processing MIDI-files and convert it to MP3 format.
+"""
+
+
+import tempfile
+from functools import lru_cache
+
+import click
+import librosa
+import pypianoroll
+import soundfile as sf
+import torch
+import numpy as np
+from midi2audio import FluidSynth
+from pypianoroll import StandardTrack, Multitrack
+
+from define_model import (
+    Generator,
+    n_samples,
+    latent_dim,
+    measure_resolution,
+    n_tracks,
+    programs,
+    is_drums,
+    track_names,
+    n_pitches,
+    lowest_pitch,
+    tempo,
+    beat_resolution,
+)
+
+
+torch.manual_seed(20220524)
+
+
+def tracks_replace_velocity(midi_file, velocity=50):
+    """
+    Changes velocity of notes in tracks of the midi_file.
+    :param midi_file: mido.MidiFile object.
+    :param velocity: set to this velocity (default 50, max 100)
+    :return: nothing
+    """
+    tracks_start = 1
+    have_signal = 1
+    tracks = midi_file.tracks[tracks_start:]
+    is_only_0_and_1 = {
+        message.velocity
+        for message in tracks[0]
+        if message.type == "note_on"
+    } == {0, 1}
+    if not is_only_0_and_1:
+        click.echo("There are many variations "
+                   "of the velocity. Exit.")
+    for track in tracks:
+        for message in track:
+            if message.type == "note_on" and message.velocity == have_signal:
+                message.velocity = velocity
+
+
+def extract_audio(input_midi_filename,
+                  output_audio_filename,
+                  shrink_seconds=30):
+    """
+    Creates wav file from midi file.
+    :param input_midi_filename: path to midi file.
+    :param output_audio_filename: path to output .wav file.
+    :param shrink_seconds: take first shrink_seconds seconds of the result.
+    :return: nothing
+    """
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as filename:
+        fs = FluidSynth()
+        fs.midi_to_audio(input_midi_filename, filename.name)
+        # Shrink audio to 30 seconds (like need in the model)
+        y, sr = librosa.load(filename, duration=shrink_seconds)
+        sf.write(output_audio_filename, y, sr, subtype="PCM_24")
+
+
+def vec_generator():
+    """
+    Random vector generator for MuseGAN.
+    Generates 3 random generators and then yields it endlessly.
+    :return: vector with shape (n_samples, latent_dim)
+    """
+    vec1 = torch.randn(n_samples, latent_dim)
+    vec2 = torch.randn(n_samples, latent_dim)
+    vec3 = torch.randn(n_samples, latent_dim)
+    while 1:
+        yield vec1
+        yield vec2
+        yield vec3
+
+
+@lru_cache(maxsize=1)
+def get_generator():
+    """
+    Initializes only one generator (Singleton).
+    :return: Generator object
+    """
+    return vec_generator()
+
+
+def generate_sample(model_path="model.pt", is_random=False):
+    """
+    Generate midi-file from MuseGAN model with model_path parameters.
+    :param model_path: filepath to MuseGAN model parameters.
+    :param is_random: generate vector random or use generator
+    :return: filename of the result midi file
+    """
+    # Data
+    model = torch.load(model_path)
+    gen = Generator()
+    gen.load_state_dict(model["generator"])
+    gen.eval()
+    if is_random:
+        sample_latent = torch.randn(n_samples, latent_dim)
+    else:
+        sample_latent = next(get_generator())
+    samples = gen(sample_latent).cpu().detach().numpy()
+    samples = samples.transpose(1, 0, 2, 3).reshape(n_tracks, -1, n_pitches)
+    tracks = []
+    for idx, (program, is_drum, track_name) in enumerate(
+        zip(programs, is_drums, track_names)
+    ):
+        pianoroll = np.pad(
+            samples[idx] > 0.5,
+            ((0, 0),
+             (lowest_pitch, 128 - lowest_pitch - n_pitches))
+        )
+        tracks.append(
+            StandardTrack(
+                name=track_name, program=program,
+                is_drum=is_drum, pianoroll=pianoroll
+            )
+        )
+    tempo_array = np.full((4 * 4 * measure_resolution, 1), tempo)
+    m = Multitrack(tracks=tracks,
+                   tempo=tempo_array,
+                   resolution=beat_resolution)
+
+    temp_name = next(tempfile._get_candidate_names())
+    filename = f"{temp_name}.mid"
+    pypianoroll.write(filename, m)
+
+    return filename
+
+
+def get_temp_name(suffix):
+    """
+    Get filename for temp file with suffix on the end.
+    :param suffix: inserts in end of the filename (default .deleteme)
+    :return: filename of the temp file
+    """
+    return next(tempfile._get_candidate_names()) + (suffix or ".deleteme")
+
+\end{lstlisting}
+
+Файл \textbf{save\_load.py}
+
+\begin{lstlisting}[language=Python]
+"""
+Module for save-load operations with exact library.
+Uses cache for performance.
+"""
+
+from functools import cache
+
+import joblib
+import pandas as pd
+from catboost import CatBoostClassifier
+
+
+def save_scaler(scaler, filename):
+    assert ".gz" in filename
+    joblib.dump(scaler, filename)
+
+
+@cache
+def load_dataset(filename):
+    assert ".csv" in filename
+    df = pd.read_csv(filename)
+    return df
+
+
+@cache
+def load_scaler(filename):
+    assert ".gz" in filename
+    return joblib.load(filename)
+
+
+def save_model(model, filename):
+    assert ".cbm" in filename
+    model.save_model(filename)
+
+
+@cache
+def load_model(filename):
+    assert ".cbm" in filename
+
+    from_file = CatBoostClassifier()
+    from_file.load_model(filename)
+
+    return from_file
+
+\end{lstlisting}
+
+Файл \textbf{consts.py}
+
+\begin{lstlisting}[language=Python]
+"""
+File with consts for research tasks.
+"""
+
+SCALER_FILENAME = "scaler.gz"
+MODEL_FILENAME = "classificator_model.cbm"
+DATASET_FILENAME = "features_30_sec.csv"
+MID_FILES_SUFFIX = ".mid"
+WAV_FILES_SUFFIX = ".wav"
+
+\end{lstlisting}
+
+Файл \textbf{features.py}
+
+\begin{lstlisting}[language=Python]
+from functools import cache
+
+import librosa
+import sklearn
+
+from consts import SCALER_FILENAME
+from save_load import load_scaler, load_dataset
+
+
+@cache
+def get_const_features(filename):
+    """
+    Gets dataset from filename and returns consts of the
+    length, rms_mean, rms_var, spectral_bandwidth_mean,
+    spectral_bandwidth_var fields.
+    :param filename: dataset file
+    :return: length_mean, rms_mean mean, rms_var mean,
+        spectral_bandwidth_mean mean, spectral_bandwidth_var mean
+    """
+    X = load_dataset(filename)
+    length_mean = int(X.length.mean())
+    rms_mean = X.rms_mean.mean()
+    rms_var = X.rms_var.mean()
+    sbm = X.spectral_bandwidth_mean.mean()
+    sbv = X.spectral_bandwidth_var.mean()
+    return length_mean, rms_mean, rms_var, sbm, sbv
+
+
+def get_features(filename):
+    """
+    :param filename: mp3 file 30 seconds duration
+    :return: ready features for genre classification
+    """
+    y, sr = librosa.load(filename)
+    y, _ = librosa.effects.trim(y)
+    spectral_rolloff = librosa.feature.spectral_rolloff(y, sr=sr)[0]
+    mfccs = librosa.feature.mfcc(y, sr=sr)
+    mfccs = sklearn.preprocessing.scale(mfccs, axis=1)
+    spectral_centroids = librosa.feature.spectral_centroid(y, sr=sr)[0]
+    tempo, _ = librosa.beat.beat_track(y, sr=sr)
+    y_harm, y_perc = librosa.effects.hpss(y)
+    zero_crossings = librosa.zero_crossings(y, pad=False)
+    hop_length = 5000
+    chromagram = librosa.feature.chroma_stft(y, sr=sr, hop_length=hop_length)
+    m = []
+    for i in mfccs:
+        m += [i.mean(), i.std()]
+    features = [
+        chromagram.mean(),
+        chromagram.std(),
+        spectral_centroids.mean(),
+        spectral_centroids.std(),
+        spectral_rolloff.mean(),
+        spectral_rolloff.std(),
+        zero_crossings.mean(),
+        zero_crossings.std(),
+        y_harm.mean(),
+        y_harm.std(),
+        y_perc.mean(),
+        y_perc.std(),
+        tempo,
+        *m,
+    ]
+    min_max_scaler = load_scaler(SCALER_FILENAME)
+    result_features = min_max_scaler.transform([features])
+
+    return result_features
+
+\end{lstlisting}
+
+Файл \textbf{classify.py}
+
+\begin{lstlisting}[language=Python]
+"""
+Module for classify genres of MP3 files.
+Has functions for classify and get state tasks.
+"""
+
+
+import catboost
+from sklearn import preprocessing
+from sklearn.model_selection import train_test_split
+
+from consts import SCALER_FILENAME, MODEL_FILENAME, DATASET_FILENAME
+from save_load import save_model, save_scaler, load_dataset, load_model
+
+
+def get_data(filename):
+    """
+    Get data for train from filename dataset.
+    :param filename: dataset file
+    :return: features (X) and target (y)
+    """
+    df = load_dataset(filename)
+    y = df.label
+    X = df.loc[:, (df.columns != "label") & (df.columns != "filename")]
+
+    return X, y
+
+
+def train_model(X_train, X_test, y_train, y_test):
+    """
+    Contains code for train CatBoostClassifier. Uses GPU for training.
+    Don't change parameters - this is best parameters for this task.
+    :param X_train: features for train
+    :param X_test: features for test
+    :param y_train: targets of the train features
+    :param y_test: targets of the test features
+    :return: fitted CatBoostClassifier object
+    """
+    model = catboost.CatBoostClassifier(
+        iterations=3346,
+        random_seed=20220512,
+        depth=6,
+        l2_leaf_reg=0.1,
+        task_type="GPU",
+        devices="0:1",
+        eval_metric="Accuracy",
+    )
+    train_pool = catboost.Pool(data=X_train, label=y_train)
+    eval_pool = catboost.Pool(data=X_test, label=y_test)
+    model.fit(train_pool, eval_set=eval_pool, verbose=1000)
+    return model
+
+
+def train_scaler(X):
+    """
+    Trains scaler for dataset.
+    :param X: dataset
+    :return: fitted preprocessing.MinMaxScaler object
+    """
+    result = preprocessing.MinMaxScaler().fit(X)
+    return result
+
+
+def train_model_and_scaler(filename):
+    """
+    Full pipeline for getting data and training models.
+    :param filename: full dataset file
+    :return: fitted CatBoostClassifier object,
+        fitted preprocessing.MinMaxScaler object
+    """
+    X, y = get_data(filename)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.3, random_state=42
+    )
+    min_max_scaler = train_scaler(X_train)
+    model = train_model(X_train, X_test, y_train, y_test)
+
+    return model, min_max_scaler
+
+
+def get_current_state():
+    """
+    Train all before running experiments.
+    All filenames in consts.py.
+    :return: nothing
+    """
+    model, min_max_scaler = train_model_and_scaler(DATASET_FILENAME)
+    save_model(model, MODEL_FILENAME)
+    save_scaler(min_max_scaler, SCALER_FILENAME)
+
+
+def classify(features):
+    """
+    Uses model MODEL_FILENAME for classify features.
+    :param features: features for classify.
+    :return: genre and probabilities vector.
+    """
+    model = load_model(MODEL_FILENAME)
+    genre = model.predict(features)
+    prob = model.predict_proba(features)
+
+    return genre[0], prob
+
+\end{lstlisting}
+
+Файл \textbf{replace.py}
+
+\begin{lstlisting}[language=Python]
+"""
+In model generates midi-file, in which velocity=1 or 0.
+So we need make velocity make bigger.
+"""
+
+import click
+import mido
+
+from utils import tracks_replace_velocity
+
+
+@click.command()
+@click.option("--name", help="Midi file for replace velocity.")
+@click.option(
+    "--velocity",
+    default=50,
+    help="If condition matches - then " 
+         "change velocity on this value. Default is 50.",
+)
+@click.option("--output", default="out_velocity.mid",
+              help="File for output.")
+def replace_velocity(name, velocity, output):
+    """Replace velocity for track if there are only 0 and 1 values."""
+    try:
+        midi_file = mido.MidiFile(name)
+    except IOError:
+        click.echo("It's not a midi file. Check it out.")
+        exit(1)
+        return 1
+
+    tracks_replace_velocity(midi_file, velocity)
+
+    click.echo(f"Saved result in {output} file.")
+    midi_file.save(output)
+    exit(0)
+
+
+if __name__ == "__main__":
+    replace_velocity()
+
+\end{lstlisting}
+
